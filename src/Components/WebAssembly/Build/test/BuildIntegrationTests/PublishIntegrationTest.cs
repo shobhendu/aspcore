@@ -102,6 +102,38 @@ namespace Microsoft.AspNetCore.Components.WebAssembly.Build
         }
 
         [Fact]
+        public async Task Publish_WithExistingWebConfig_Works()
+        {
+            // Arrange
+            using var project = ProjectDirectory.Create("standalone", additionalProjects: new[] { "razorclasslibrary", "LinkBaseToWebRoot" });
+            project.Configuration = "Release";
+
+            var webConfigContents = @"<?xml version='1.0' encoding='utf-8' ?>
+< configuration >
+  < system.web >
+  </ system.web >
+</ configuration >";
+            AddFileToProject(project, "web.config", webConfigContents);
+
+            AddSiblingProjectFileContent(project, @"
+<Target Name='CopyWebConfigOnPublish' AfterTargets='Publish'>
+  <Copy SourceFiles='web.config' DestinationFolder='$(PublishDir)' />
+</Target> ");
+
+            var result = await MSBuildProcessManager.DotnetMSBuild(project, "Publish");
+
+            Assert.BuildPassed(result);
+
+            var publishDirectory = project.PublishOutputDirectory;
+
+            var blazorPublishDirectory = Path.Combine(publishDirectory, "wwwroot");
+
+            // Verify web.config
+            Assert.FileExists(result, publishDirectory, "web.config");
+            Assert.FileContains(result, Path.Combine(publishDirectory, "web.config"), webConfigContents);
+        }
+
+        [Fact]
         public async Task Publish_WithNoBuild_Works()
         {
             // Arrange
@@ -391,6 +423,12 @@ namespace Microsoft.AspNetCore.Components.WebAssembly.Build
             var updated = existing.Replace("<!-- Test Placeholder -->", content);
             File.WriteAllText(path, updated);
         }
+        private static void AddFileToProject(ProjectDirectory project, string filename, string content)
+        {
+            var path = Path.Combine(project.DirectoryPath, filename);
+            File.WriteAllText(path, content);
+        }
+
 
         private static void VerifyBootManifestHashes(MSBuildResult result, string blazorPublishDirectory)
         {
